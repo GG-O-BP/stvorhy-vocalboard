@@ -10,7 +10,7 @@
 - Solid 2.0 beta 규칙: 정확 버전 고정(자동 업데이트 금지), createSignal/
   createMemo/Show/For 등 정착 프리미티브만 사용, action/낙관적 업데이트/
   async memo 금지, 쓰기는 마이크로태스크 배칭되어 flush 전 읽기가 이전 값임에
-  유의, 비즈니스 로직은 프레임워크 무관 TS 모듈로 분리하고 컴포넌트는 얇은 뷰로.
+  유의, 비즈니스 로직은 프레임워크 무관 JS 모듈로 분리하고 컴포넌트는 얇은 뷰로.
 - 추론은 `InferenceEngine` trait 뒤에 두고 ort 구현체로 주입.
 - SwiftF0 confidence는 voicing 판단이 아니므로 RMS 게이트를 항상 병행.
   게이트 미달 hop은 추론 생략 가능하나 unvoiced PitchFrame은 반드시 방출

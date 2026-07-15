@@ -43,7 +43,7 @@ PitchFrame을 반드시 방출한다(62.5Hz 프레임 결번 금지 — §5 F0C1
 | 디코딩 | Symphonia 0.6 | AAC-LC 가능, HE-AAC/DRM 불가 안내 | 3.5 |
 | 보컬 분리 | 둘 다 탑재 — 기본: MDX-Net 계열 보컬 전용(경량) / 품질 옵션: HTDemucs FT ONNX(MIT). 모두 온디맨드 다운로드 | 곡당 1회, 사용 모델을 `sep_model`에 기록, 결과 캐시. 기본값 타당성은 Phase 3.5 첫 측정으로 검증 | 3.5 |
 | 재생 | cpal 출력 스트림 직접 | | 3.5 |
-| 프론트 | Solid 2.0 beta(정확 버전 고정) + Vite + vite-plugin-solid@next + TS | SolidStart/라우터 없음, CSR 단일 뷰 | 0 |
+| 프론트 | Solid 2.0 beta(정확 버전 고정) + Vite + vite-plugin-solid@next + JS | SolidStart/라우터 없음, CSR 단일 뷰 | 0 |
 | 렌더 | PixiJS v8 | WebGPU 우선 + WebGL 자동 폴백, 스크롤 텍스처 | 0 |
 | 테스트 | cargo test / vitest + @solidjs/testing-library#next | | 0 |
 | 모바일 플러그인 | 커스텀 Swift/Kotlin | 범위는 CLAUDE.md 가드레일 참조 | 1 |
@@ -128,3 +128,4 @@ tracks(id TEXT PK, title TEXT, source_path TEXT, duration_ms INTEGER,
   추가(§3), DSP 폴백 pyin 확정·보컬 분리 이중 탑재(기본 MDX-Net) 확정(§3),
   cents 기준·음이름 처리 명시(§5), 채점 공식·preview 포맷·rms 인코딩 정의(§5),
   track_id ON DELETE SET NULL + foreign_keys=ON(§5), Phase 0 사전 정비 추가(§6).
+- 2026-07-15: 프론트 언어 JS 확정(§3). CLAUDE.md 가드레일 표기도 동기화.
