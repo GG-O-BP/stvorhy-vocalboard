@@ -24,3 +24,6 @@ cpal = { version = "=0.17.3", features = ["audio_thread_priority"] }
 vocalboard-dsp = { workspace = true }
 tauri-plugin-store = "=2.4.3"
 tauri-plugin-vocal-audio = { workspace = true }
+uuid = { version = "=1.23.5", features = ["v4"] }
+vocalboard-storage = { workspace = true }
+vocalboard-codec = { workspace = true }

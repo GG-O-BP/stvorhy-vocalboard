@@ -30,9 +30,11 @@ pub struct CaptureInfo {
     pub simulated: bool,
 }
 
-/// DSP 스레드가 프레임을 넘길 대상. Phase 2에서 스토리지 mpsc가 추가된다.
+/// DSP 스레드가 산출물을 넘길 대상 (Channel + 스토리지 mpsc 팬아웃).
 pub trait FrameSink: Send + 'static {
     fn on_frame(&mut self, frame: &PitchFrame);
+    /// 드라이 mono 입력 (mixdown 직후, HPF 이전, 입력 SR) — 녹음용.
+    fn on_audio(&mut self, _mono: &[f32]) {}
 }
 
 impl<F: FnMut(&PitchFrame) + Send + 'static> FrameSink for F {
@@ -77,6 +79,26 @@ impl Capture {
             let _ = t.join();
         }
     }
+}
+
+/// 캡처 시작 전에 입력 SR/채널을 조회한다 (스토리지 Begin이 프레임보다
+/// 먼저 가야 하므로 세션 메타 확정용).
+pub fn probe() -> Result<CaptureInfo, String> {
+    if std::env::var("VOCALBOARD_SIM_INPUT").is_ok_and(|v| v == "1") {
+        return Ok(CaptureInfo { sample_rate: 48_000, channels: 1, simulated: true });
+    }
+    let host = cpal::default_host();
+    let device = host
+        .default_input_device()
+        .ok_or_else(|| "입력 장치가 없습니다".to_string())?;
+    let config = device
+        .default_input_config()
+        .map_err(|e| format!("입력 설정 조회 실패: {e}"))?;
+    Ok(CaptureInfo {
+        sample_rate: config.sample_rate(),
+        channels: config.channels(),
+        simulated: false,
+    })
 }
 
 /// 캡처를 시작한다. `engine`/`sink`는 DSP 스레드로 이동한다.
@@ -302,6 +324,9 @@ fn spawn_dsp_thread(
                     mono.push(frame.iter().sum::<f32>() / ch as f32);
                 }
                 pending.drain(..whole);
+                if !mono.is_empty() {
+                    sink.on_audio(&mono);
+                }
 
                 frames.clear();
                 if let Err(e) = pipeline.process(&mono, &mut frames) {

@@ -6,4 +6,13 @@ license.workspace = true
 description = "Session persistence: sqlite storage thread, f0raw journal, recordings"
 
 [dependencies]
+hound = "=3.5.1"
+rusqlite = { version = "=0.39.0", features = ["bundled"] }
+rusqlite_migration = "=2.5.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 thiserror = { workspace = true }
+vocalboard-codec = { version = "0.1.0", path = "../codec" }
+
+[dev-dependencies]
+tempfile = "3.27.0"

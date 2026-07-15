@@ -21,3 +21,6 @@ ep-nnapi = ["ort/nnapi"]
 ep-xnnpack = ["ort/xnnpack"]
 # onnxruntime을 런타임 dlopen으로 로드 (Android에서 .so를 jniLibs로 동봉할 때).
 ort-load-dynamic = ["ort/load-dynamic"]
+
+[dev-dependencies]
+pyin = "=1.2.0"
