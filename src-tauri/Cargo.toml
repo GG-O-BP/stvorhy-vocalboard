@@ -27,3 +27,4 @@ tauri-plugin-vocal-audio = { workspace = true }
 uuid = { version = "=1.23.5", features = ["v4"] }
 vocalboard-storage = { workspace = true }
 vocalboard-codec = { workspace = true }
+hound = "=3.5.1"

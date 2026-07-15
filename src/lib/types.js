@@ -18,4 +18,79 @@
  * @property {boolean} voiced RMS 게이트 AND confidence 임계 통과 여부
  */
 
+/**
+ * 세션 목록 항목 (Rust `SessionListItem`, crates/storage queries).
+ * @typedef {Object} SessionListItem
+ * @property {string} id
+ * @property {number} started_at unix epoch ms
+ * @property {number} duration_ms
+ * @property {string | null} track_id
+ * @property {string | null} track_title
+ * @property {number} frame_count
+ * @property {number} voiced_ratio [0,1]
+ * @property {number | null} mean_score
+ * @property {boolean} has_recording
+ * @property {number[] | null} preview [버전u8, ...256 buckets] (§5)
+ */
+
+/**
+ * 세션 상세 (Rust `SessionDetail`).
+ * @typedef {Object} SessionDetail
+ * @property {string} id
+ * @property {number} started_at
+ * @property {number} duration_ms
+ * @property {string | null} track_id
+ * @property {string | null} track_title
+ * @property {number} frame_count
+ * @property {number} voiced_ratio
+ * @property {number | null} midi_min
+ * @property {number | null} midi_max
+ * @property {number | null} mean_abs_cents
+ * @property {number | null} mean_score
+ * @property {boolean} octave_invariant
+ * @property {string | null} codec
+ * @property {string | null} recording_path
+ */
+
+/**
+ * min/max 데시메이션 포인트 (Rust `SeriesPoint`). 무성 버킷은 null.
+ * @typedef {Object} SeriesPoint
+ * @property {number} t 버킷 시작 ms
+ * @property {number | null} min voiced midi 최소
+ * @property {number | null} max voiced midi 최대
+ */
+
+/**
+ * 세션 피치 시리즈 (Rust `SessionSeries`).
+ * @typedef {Object} SessionSeries
+ * @property {number} frame_count
+ * @property {number} hop_ms
+ * @property {number} duration_ms
+ * @property {SeriesPoint[]} points
+ */
+
+/**
+ * 재생 플레이헤드 이벤트 (Rust `PlayheadEvent`, ~20Hz).
+ * @typedef {Object} PlayheadEvent
+ * @property {number} t 재생 위치 ms
+ * @property {boolean} playing
+ * @property {boolean} done
+ * @property {number} duration_ms
+ */
+
+/**
+ * 세션 종료 요약 (Rust `FinalizedSession`).
+ * @typedef {Object} FinalizedSession
+ * @property {string} id
+ * @property {number} started_at
+ * @property {number} duration_ms
+ * @property {number} frame_count
+ * @property {number} voiced_ratio
+ * @property {number | null} midi_min
+ * @property {number | null} midi_max
+ * @property {number | null} mean_abs_cents
+ * @property {number | null} mean_score
+ * @property {string | null} recording_path
+ */
+
 export {};

@@ -49,6 +49,28 @@ impl RubatoResampler {
     }
 }
 
+/// 전체 클립을 임의 SR 쌍으로 일괄 변환한다 (mono, 오프라인 용도 —
+/// 재생 프리롤/레퍼런스 준비). rubato Fft의 지연 트리밍 포함.
+pub fn resample_all(input: &[f32], from: u32, to: u32) -> Result<Vec<f32>, DspError> {
+    if from == to || input.is_empty() {
+        return Ok(input.to_vec());
+    }
+    let mut rs = Fft::<f32>::new(from as usize, to as usize, RUBATO_CHUNK, 1, FixedSync::Input)
+        .map_err(|e| DspError::Resample(e.to_string()))?;
+    let expected = (input.len() as f64 * to as f64 / from as f64).ceil() as usize;
+    let mut out = vec![0.0f32; expected + RUBATO_CHUNK * 4];
+    let in_adapter = SequentialSlice::new(input, 1, input.len())
+        .map_err(|e| DspError::Resample(e.to_string()))?;
+    let cap = out.len();
+    let mut out_adapter = SequentialSlice::new_mut(&mut out, 1, cap)
+        .map_err(|e| DspError::Resample(e.to_string()))?;
+    let (_used, written) = rs
+        .process_all_into_buffer(&in_adapter, &mut out_adapter, input.len(), None)
+        .map_err(|e| DspError::Resample(e.to_string()))?;
+    out.truncate(written);
+    Ok(out)
+}
+
 /// 입력 SR → 16k 변환기 (경로 자동 선택).
 pub enum To16k {
     Passthrough,
@@ -118,6 +140,27 @@ mod tests {
         let est = AcfEngine::new().infer(settled).unwrap();
         let last = est.last().unwrap();
         let cents = 1200.0 * (last.f0 / 1000.0).log2();
+        assert!(cents.abs() < 30.0, "f0={} ({cents:+.1}c)", last.f0);
+    }
+
+    #[test]
+    fn resample_all_preserves_pitch_and_length() {
+        let x = sine(440.0, 44_100, 44_100); // 1초
+        let y = resample_all(&x, 44_100, 48_000).unwrap();
+        let expected = 48_000;
+        assert!(
+            (y.len() as isize - expected).abs() < 2048,
+            "len {} vs {expected}",
+            y.len()
+        );
+        let settled = &y[y.len() / 4..y.len() / 4 + 8192];
+        // 48k 신호의 피치 확인은 16k로 내린 뒤 ACF로.
+        let mut d = crate::decimate::FirDecimator::new(48_000, 16_000).unwrap();
+        let mut z = Vec::new();
+        d.process(settled, &mut z);
+        let est = AcfEngine::new().infer(&z).unwrap();
+        let last = est.last().unwrap();
+        let cents = 1200.0 * (last.f0 / 440.0).log2();
         assert!(cents.abs() < 30.0, "f0={} ({cents:+.1}c)", last.f0);
     }
 

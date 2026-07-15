@@ -40,3 +40,68 @@ export function stopCapture() {
 export function configure(config) {
   return invoke("configure", { config });
 }
+
+/** @typedef {import("./types.js").SessionListItem} SessionListItem */
+/** @typedef {import("./types.js").SessionDetail} SessionDetail */
+/** @typedef {import("./types.js").SessionSeries} SessionSeries */
+/** @typedef {import("./types.js").PlayheadEvent} PlayheadEvent */
+/** @typedef {import("./types.js").FinalizedSession} FinalizedSession */
+
+/** @returns {Promise<SessionListItem[]>} */
+export function listSessions() {
+  return invoke("list_sessions");
+}
+
+/**
+ * @param {string} id
+ * @returns {Promise<SessionDetail>}
+ */
+export function sessionDetail(id) {
+  return invoke("session_detail", { id });
+}
+
+/**
+ * @param {string} id
+ * @param {number} maxPoints
+ * @returns {Promise<SessionSeries>}
+ */
+export function sessionSeries(id, maxPoints) {
+  return invoke("session_series", { id, maxPoints });
+}
+
+/**
+ * 세션 녹음 재생. 플레이헤드는 ~20Hz로 콜백에 온다. 반환: duration_ms.
+ * @param {string} sessionId
+ * @param {number} startMs
+ * @param {(e: PlayheadEvent) => void} onPlayhead
+ * @returns {Promise<number>}
+ */
+export async function playRecording(sessionId, startMs, onPlayhead) {
+  /** @type {Channel<PlayheadEvent>} */
+  const channel = new Channel();
+  channel.onmessage = onPlayhead;
+  return await invoke("play_recording", { sessionId, startMs, channel });
+}
+
+/** @returns {Promise<void>} */
+export function playbackPause() {
+  return invoke("playback_pause");
+}
+
+/** @returns {Promise<void>} */
+export function playbackResume() {
+  return invoke("playback_resume");
+}
+
+/**
+ * @param {number} tMs
+ * @returns {Promise<void>}
+ */
+export function playbackSeek(tMs) {
+  return invoke("playback_seek", { tMs });
+}
+
+/** @returns {Promise<void>} */
+export function playbackStop() {
+  return invoke("playback_stop");
+}

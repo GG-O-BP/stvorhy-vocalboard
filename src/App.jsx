@@ -1,5 +1,6 @@
 import { createSignal, Show } from "solid-js";
 import LiveView from "./components/LiveView.jsx";
+import SessionsView from "./components/SessionsView.jsx";
 import SettingsView from "./components/SettingsView.jsx";
 
 /** @typedef {"live" | "sessions" | "settings"} Tab */
@@ -25,7 +26,7 @@ function App() {
           <LiveView />
         </Show>
         <Show when={tab() === "sessions"}>
-          <p class="placeholder">세션 목록은 Phase 2/3에서 제공됩니다.</p>
+          <SessionsView />
         </Show>
         <Show when={tab() === "settings"}>
           <SettingsView />

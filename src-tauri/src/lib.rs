@@ -1,5 +1,6 @@
 mod audio;
 mod config;
+mod player;
 
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -21,6 +22,7 @@ struct AppState {
     capture: Mutex<Option<Capture>>,
     config: Mutex<AppConfig>,
     storage: Mutex<Option<StorageHandle>>,
+    playback: Mutex<Option<player::Player>>,
     root: StorageRoot,
 }
 
@@ -190,6 +192,74 @@ fn session_series(
     vocalboard_storage::queries::session_series(&conn, &id, max_points).map_err(|e| e.to_string())
 }
 
+/// 세션 녹음 재생 시작. 플레이헤드는 Channel로 ~20Hz 동기.
+#[tauri::command]
+fn play_recording(
+    state: State<'_, AppState>,
+    session_id: String,
+    start_ms: Option<u32>,
+    channel: Channel<player::PlayheadEvent>,
+) -> Result<u32, String> {
+    let conn = db::open_read(&state.root.db_path()).map_err(|e| e.to_string())?;
+    let detail =
+        vocalboard_storage::queries::session_detail(&conn, &session_id).map_err(|e| e.to_string())?;
+    let rel = detail
+        .recording_path
+        .ok_or("이 세션에는 녹음이 없습니다 (보존 정책으로 삭제되었을 수 있음)")?;
+    let path = state.root.app_data.join(rel);
+    if !path.exists() {
+        return Err("녹음 파일이 없습니다".into());
+    }
+    let clip = player::Clip::from_wav(&path)?;
+    let duration_ms = (clip.samples.len() as u64 * 1000 / clip.sample_rate.max(1) as u64) as u32;
+
+    let mut slot = state.playback.lock().unwrap();
+    if let Some(old) = slot.take() {
+        old.stop();
+    }
+    let p = player::play(
+        clip,
+        start_ms.unwrap_or(0),
+        Box::new(move |e| {
+            let _ = channel.send(e);
+        }),
+    )?;
+    *slot = Some(p);
+    Ok(duration_ms)
+}
+
+#[tauri::command]
+fn playback_pause(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(p) = state.playback.lock().unwrap().as_ref() {
+        p.pause();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn playback_resume(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(p) = state.playback.lock().unwrap().as_ref() {
+        p.resume();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn playback_seek(state: State<'_, AppState>, t_ms: u32) -> Result<(), String> {
+    if let Some(p) = state.playback.lock().unwrap().as_ref() {
+        p.seek_ms(t_ms);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn playback_stop(state: State<'_, AppState>) -> Result<(), String> {
+    if let Some(p) = state.playback.lock().unwrap().take() {
+        p.stop();
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -207,6 +277,7 @@ pub fn run() {
                 capture: Mutex::new(None),
                 config: Mutex::new(AppConfig::default()),
                 storage: Mutex::new(Some(storage)),
+                playback: Mutex::new(None),
                 root,
             });
             // store에 저장된 설정을 초기 로드 (프론트 configure 이전의 기본).
@@ -238,7 +309,12 @@ pub fn run() {
             configure,
             list_sessions,
             session_detail,
-            session_series
+            session_series,
+            play_recording,
+            playback_pause,
+            playback_resume,
+            playback_seek,
+            playback_stop
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

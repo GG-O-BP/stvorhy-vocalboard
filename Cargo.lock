@@ -3805,6 +3805,7 @@ name = "stvorhy-vocalboard"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "hound",
  "ringbuf",
  "serde",
  "serde_json",
