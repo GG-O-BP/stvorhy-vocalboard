@@ -8,3 +8,6 @@ description = "Realtime vocal DSP: HPF, decimation, RMS gate, SwiftF0 inference,
 [dependencies]
 thiserror = { workspace = true }
 serde = { workspace = true }
+biquad = "=0.6.0"
+rubato = "=4.0.0"
+ort = "=2.0.0-rc.12"
