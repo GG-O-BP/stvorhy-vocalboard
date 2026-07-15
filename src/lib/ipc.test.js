@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
-import { startCapture, stopCapture } from "./ipc.js";
+import { configure, startCapture, stopCapture } from "./ipc.js";
+import { DEFAULTS } from "./settings.js";
 
 afterEach(() => {
   clearMocks();
@@ -36,6 +37,18 @@ describe("ipc contract", () => {
     };
     channelArg.onmessage(frame);
     expect(frames).toEqual([frame]);
+  });
+
+  it("configure sends the config object under the `config` key", async () => {
+    /** @type {any} */
+    let seen = null;
+    mockIPC((cmd, args) => {
+      if (cmd === "configure") {
+        seen = /** @type {any} */ (args).config;
+      }
+    });
+    await configure({ ...DEFAULTS, gate_dbfs: -50 });
+    expect(seen).toMatchObject({ gate_dbfs: -50, conf_threshold: 0.9 });
   });
 
   it("stopCapture invokes stop_capture", async () => {

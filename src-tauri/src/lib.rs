@@ -1,17 +1,21 @@
 mod audio;
+mod config;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
-use vocalboard_dsp::{AcfEngine, InferenceEngine, OrtEngine, PipelineParams, PitchFrame};
+use tauri_plugin_store::StoreExt;
+use vocalboard_dsp::{AcfEngine, InferenceEngine, OrtEngine, PitchFrame};
 
 use audio::{Capture, CaptureInfo};
+use config::AppConfig;
 
 #[derive(Default)]
 struct AppState {
     capture: Mutex<Option<Capture>>,
+    config: Mutex<AppConfig>,
 }
 
 /// SwiftF0 모델 탐색: 환경변수 → app_data/models → (dev 빌드) 저장소 models/.
@@ -69,10 +73,22 @@ fn start_capture(
         // Channel 송출 실패(웹뷰 리로드 등)는 세션을 죽일 이유가 아니다.
         let _ = channel.send(*f);
     });
-    let capture = audio::start(engine, PipelineParams::default(), sink)?;
+    let params = state.config.lock().unwrap().pipeline_params();
+    let capture = audio::start(engine, params, sink)?;
     let info = capture.info.clone();
     *slot = Some(capture);
     Ok(info)
+}
+
+/// DSP 관련 설정을 백엔드에 동기화한다. 실행 중인 캡처에는 즉시 적용.
+#[tauri::command]
+fn configure(state: State<'_, AppState>, config: AppConfig) -> Result<(), String> {
+    let config = config.sanitized();
+    *state.config.lock().unwrap() = config;
+    if let Some(capture) = state.capture.lock().unwrap().as_ref() {
+        capture.set_params(config.pipeline_params());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -88,8 +104,23 @@ fn stop_capture(state: State<'_, AppState>) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![start_capture, stop_capture])
+        .setup(|app| {
+            // store에 저장된 설정을 초기 로드 (프론트 configure 이전의 기본).
+            let store = app.store("settings.json")?;
+            if let Some(v) = store.get("config") {
+                if let Ok(cfg) = serde_json::from_value::<AppConfig>(v) {
+                    *app.state::<AppState>().config.lock().unwrap() = cfg.sanitized();
+                }
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            start_capture,
+            stop_capture,
+            configure
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

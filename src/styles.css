@@ -137,3 +137,50 @@ body {
   min-height: 0;
   overflow: hidden;
 }
+
+.settings {
+  padding: 20px 24px;
+  max-width: 560px;
+  overflow-y: auto;
+}
+
+.settings h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.settings h3 {
+  margin: 20px 0 8px;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.settings-state {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.settings label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.settings label.row {
+  justify-content: flex-start;
+}
+
+.settings input[type="number"] {
+  width: 110px;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 14px;
+}

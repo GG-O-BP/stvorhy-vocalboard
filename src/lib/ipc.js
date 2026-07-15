@@ -31,3 +31,12 @@ export async function startCapture(onFrame) {
 export function stopCapture() {
   return invoke("stop_capture");
 }
+
+/**
+ * DSP 관련 설정을 백엔드에 동기화한다 (실행 중 캡처에 즉시 적용).
+ * @param {import("./settings.js").AppConfig} config
+ * @returns {Promise<void>}
+ */
+export function configure(config) {
+  return invoke("configure", { config });
+}
