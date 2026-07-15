@@ -1,9 +1,11 @@
 :root {
   color-scheme: dark;
   --bg: #14151a;
+  --panel: #1b1d25;
   --fg: #e8e8ec;
   --muted: #8b8fa3;
   --accent: #4fc1ff;
+  --border: #2c2f3f;
 }
 
 * {
@@ -24,6 +26,114 @@ body {
   height: 100%;
 }
 
-.container {
-  padding: 16px;
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.tabs button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tabs button.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.placeholder {
+  color: var(--muted);
+  padding: 24px;
+}
+
+.live-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+}
+
+.toolbar button.primary {
+  appearance: none;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 14px;
+  padding: 6px 22px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.toolbar button.primary:hover {
+  background: rgba(79, 193, 255, 0.12);
+}
+
+.status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.readout {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.readout .note {
+  font-size: 26px;
+  font-weight: 600;
+  min-width: 64px;
+  text-align: right;
+}
+
+.readout .note.muted {
+  color: var(--muted);
+}
+
+.readout .cents {
+  font-size: 15px;
+  color: var(--accent);
+  min-width: 48px;
+}
+
+.readout .meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.roll-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }

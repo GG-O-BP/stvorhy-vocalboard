@@ -59,8 +59,10 @@ fn start_capture(
     channel: Channel<PitchFrame>,
 ) -> Result<CaptureInfo, String> {
     let mut slot = state.capture.lock().unwrap();
-    if slot.is_some() {
-        return Err("이미 캡처 중입니다".into());
+    // 웹뷰 리로드 등으로 프론트가 상태를 잃어도 재시작이 막히지 않도록
+    // 기존 캡처는 교체한다.
+    if let Some(old) = slot.take() {
+        old.stop();
     }
     let engine = make_engine(&app)?;
     let sink = Box::new(move |f: &PitchFrame| {
@@ -76,13 +78,11 @@ fn start_capture(
 #[tauri::command]
 fn stop_capture(state: State<'_, AppState>) -> Result<(), String> {
     let mut slot = state.capture.lock().unwrap();
-    match slot.take() {
-        Some(c) => {
-            c.stop();
-            Ok(())
-        }
-        None => Err("캡처 중이 아닙니다".into()),
+    // 멱등: 이미 정지 상태여도 성공 (리로드 후 정리 호출 허용).
+    if let Some(c) = slot.take() {
+        c.stop();
     }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
