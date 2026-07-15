@@ -65,18 +65,18 @@ impl Capture {
         self.shared.params_dirty.store(true, Ordering::Release);
     }
 
-    pub fn take_error(&self) -> Option<String> {
-        self.shared.error.lock().unwrap().take()
-    }
-
-    pub fn overruns(&self) -> u64 {
-        self.shared.overrun.load(Ordering::Relaxed)
-    }
-
     pub fn stop(mut self) {
         self.shared.stop.store(true, Ordering::Release);
         for t in self.threads.drain(..) {
             let _ = t.join();
+        }
+        // 진단: 오류/오버런 리포트 (RT 콜백에서는 로그 금지였던 것들).
+        if let Some(e) = self.shared.error.lock().unwrap().take() {
+            eprintln!("[capture] 스트림 오류 발생 이력: {e}");
+        }
+        let overruns = self.shared.overrun.load(Ordering::Relaxed);
+        if overruns > 0 {
+            eprintln!("[capture] ringbuf 오버런: {overruns} 샘플 유실");
         }
     }
 }

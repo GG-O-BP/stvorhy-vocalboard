@@ -285,3 +285,93 @@ body {
   border-radius: 6px;
   cursor: crosshair;
 }
+
+.tracks {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.track-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 16px;
+  overflow-y: auto;
+}
+
+.track-list li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.track-list li:hover {
+  background: var(--panel);
+}
+
+.track-list .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.track-list .actions button,
+.gate-confirm button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 5px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.track-list .actions button.primary,
+.gate-confirm button.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.track-list .actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.practice {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gate-confirm {
+  margin: 8px 16px;
+  padding: 12px 16px;
+  border: 1px solid #8a5c2e;
+  border-radius: 8px;
+  background: rgba(255, 169, 79, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gate-confirm p {
+  margin: 0;
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.summary {
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.summary b {
+  color: var(--accent);
+  font-size: 18px;
+}

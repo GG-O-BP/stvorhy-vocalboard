@@ -93,4 +93,40 @@
  * @property {string | null} recording_path
  */
 
+/**
+ * 트랙 목록 항목 (Rust `TrackListItem`).
+ * @typedef {Object} TrackListItem
+ * @property {string} id
+ * @property {string | null} title
+ * @property {number} duration_ms
+ * @property {boolean} separated
+ * @property {string | null} sep_model
+ * @property {string | null} notes_json JSON [{s,e,m}] (노트 블록)
+ * @property {number} created_at
+ * @property {number[] | null} preview
+ */
+
+/**
+ * 분리 잡 진행 (Rust `SepProgress`).
+ * @typedef {Object} SepProgress
+ * @property {"download" | "decode" | "separate" | "save" | "extract" | "done" | "error"} stage
+ * @property {number} progress [0,1]
+ * @property {string | null} message
+ */
+
+/**
+ * 임포트 결과 (Rust `ImportedTrack`).
+ * @typedef {Object} ImportedTrack
+ * @property {string} id
+ * @property {string} title
+ * @property {number} duration_ms
+ */
+
+/**
+ * 연습 시작 결과 (Rust `PracticeInfo`).
+ * @typedef {Object} PracticeInfo
+ * @property {{ sample_rate: number, channels: number, simulated: boolean }} capture
+ * @property {number} duration_ms 반주 길이 (무반주면 0)
+ */
+
 export {};

@@ -159,10 +159,27 @@ pub fn separate_track(
                     message,
                 });
             };
-            let result = run_separation_job(&app2, &root, &storage_tx, &track_id2, quality, &emit);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_separation_job(&app2, &root, &storage_tx, &track_id2, quality, &emit)
+            }))
+            .unwrap_or_else(|p| {
+                let msg = p
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| p.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "unknown panic".into());
+                Err(format!("내부 패닉: {msg}"))
+            });
             match result {
-                Ok(()) => emit("done", 1.0, None),
-                Err(e) => emit("error", 0.0, Some(e)),
+                Ok(()) => {
+                    eprintln!("[separate] 완료: {track_id2}");
+                    emit("done", 1.0, None);
+                }
+                Err(e) => {
+                    // 채널 수신자가 없어도(탭 이탈) 원인 추적이 가능해야 한다.
+                    eprintln!("[separate] 실패 {track_id2}: {e}");
+                    emit("error", 0.0, Some(e));
+                }
             }
             let jobs = app2.state::<TrackJobs>();
             jobs.running.lock().unwrap().remove(&track_id2);

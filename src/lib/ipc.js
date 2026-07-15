@@ -105,3 +105,96 @@ export function playbackSeek(tMs) {
 export function playbackStop() {
   return invoke("playback_stop");
 }
+
+/** @typedef {import("./types.js").TrackListItem} TrackListItem */
+/** @typedef {import("./types.js").SepProgress} SepProgress */
+/** @typedef {import("./types.js").ImportedTrack} ImportedTrack */
+/** @typedef {import("./types.js").PracticeInfo} PracticeInfo */
+
+/**
+ * @param {string} srcPath
+ * @returns {Promise<ImportedTrack>}
+ */
+export function importTrack(srcPath) {
+  return invoke("import_track", { srcPath });
+}
+
+/**
+ * 분리 잡 시작 (백그라운드). 진행은 콜백으로 (download/decode/separate/
+ * save/extract/done/error).
+ * @param {string} trackId
+ * @param {(p: SepProgress) => void} onProgress
+ * @returns {Promise<void>}
+ */
+export async function separateTrack(trackId, onProgress) {
+  /** @type {Channel<SepProgress>} */
+  const channel = new Channel();
+  channel.onmessage = onProgress;
+  return await invoke("separate_track", { trackId, channel });
+}
+
+/** @returns {Promise<TrackListItem[]>} */
+export function listTracks() {
+  return invoke("list_tracks");
+}
+
+/**
+ * @param {string} id
+ * @param {number} maxPoints
+ * @returns {Promise<import("./types.js").SessionSeries>}
+ */
+export function trackSeries(id, maxPoints) {
+  return invoke("track_series", { id, maxPoints });
+}
+
+/**
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+export function deleteTrack(id) {
+  return invoke("delete_track", { id });
+}
+
+/**
+ * 연습 시작 (반주 재생 여부 선택). HEADPHONE_GATE: 접두 오류 시 사용자
+ * 확인 후 headphoneOverride=true로 재시도.
+ * @param {string} trackId
+ * @param {boolean} playback
+ * @param {boolean} headphoneOverride
+ * @param {(f: import("./types.js").PitchFrame) => void} onFrame
+ * @param {(e: import("./types.js").PlayheadEvent) => void} onPlayhead
+ * @returns {Promise<PracticeInfo>}
+ */
+export async function practiceStart(trackId, playback, headphoneOverride, onFrame, onPlayhead) {
+  /** @type {Channel<import("./types.js").PitchFrame>} */
+  const pitch = new Channel();
+  pitch.onmessage = onFrame;
+  /** @type {Channel<import("./types.js").PlayheadEvent>} */
+  const playhead = new Channel();
+  playhead.onmessage = onPlayhead;
+  return await invoke("practice_start", {
+    trackId,
+    playback,
+    headphoneOverride,
+    pitch,
+    playhead,
+  });
+}
+
+/** @returns {Promise<import("./types.js").FinalizedSession | null>} */
+export function practiceStop() {
+  return invoke("practice_stop");
+}
+
+/**
+ * 노래방 (반주만 재생). 반환: duration_ms.
+ * @param {string} trackId
+ * @param {(e: import("./types.js").PlayheadEvent) => void} onPlayhead
+ * @returns {Promise<number>}
+ */
+export async function karaokeStart(trackId, onPlayhead) {
+  /** @type {Channel<import("./types.js").PlayheadEvent>} */
+  const playhead = new Channel();
+  playhead.onmessage = onPlayhead;
+  return await invoke("karaoke_start", { trackId, playhead });
+}

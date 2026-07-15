@@ -160,7 +160,7 @@ pub fn segment_notes(frames: &[F0Frame], p: &SegmentParams) -> Vec<Note> {
         if m % 2 == 1 { v[m / 2] } else { (v[m / 2 - 1] + v[m / 2]) / 2.0 }
     };
 
-    let mut flush = |cur: &mut Vec<(usize, f32)>, notes: &mut Vec<Note>| {
+    let flush = |cur: &mut Vec<(usize, f32)>, notes: &mut Vec<Note>| {
         if cur.len() >= min_hops.max(1) {
             let start = cur[0].0;
             let end = cur[cur.len() - 1].0 + 1;

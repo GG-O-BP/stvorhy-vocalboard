@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, Show } from "solid-js";
 import { startCapture, stopCapture } from "../lib/ipc.js";
+import { attachMobileHandlers } from "../lib/mobileHardening.js";
 import { formatCents, midiToNoteName } from "../lib/noteNames.js";
 import { createReadoutThrottle } from "../lib/throttle.js";
 import {
@@ -32,6 +33,24 @@ export default function LiveView() {
   /** @type {ReturnType<typeof createReadoutThrottle<PitchFrame>> | null} */
   let throttle = null;
   let busy = false;
+  /** @type {(() => void) | null} */
+  let detachMobile = null;
+
+  // Phase 4: 인터럽션/라우트/포커스 → 캡처 수명주기 배선 (데스크톱 no-op).
+  attachMobileHandlers({
+    isActive: () => running(),
+    restart: async () => {
+      await stop();
+      await start();
+    },
+    suspend: async (reason) => {
+      await stop();
+      setStatus(`중단됨 (${reason})`);
+    },
+    notify: (m) => setStatus(m),
+  }).then((d) => {
+    detachMobile = d;
+  });
 
   async function start() {
     if (running() || busy) return;
@@ -90,6 +109,7 @@ export default function LiveView() {
   }
 
   onCleanup(() => {
+    detachMobile?.();
     if (running()) {
       stopCapture().catch(() => {});
       throttle?.stop();

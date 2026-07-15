@@ -78,10 +78,6 @@ impl Player {
         self.shared.pos.store(frame.min(self.shared.total), Ordering::Release);
     }
 
-    pub fn position_ms(&self) -> u32 {
-        (self.shared.pos.load(Ordering::Acquire) * 1000 / self.shared.out_sr as u64) as u32
-    }
-
     pub fn stop(mut self) {
         self.shared.stop.store(true, Ordering::Release);
         for t in self.threads.drain(..) {

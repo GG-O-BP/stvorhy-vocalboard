@@ -4,7 +4,7 @@
 //! 공개 체크섬이 없는 모델은 TOFU: 최초 성공 다운로드의 해시를 `.sha256`
 //! 사이드카에 박제하고 이후 다운로드에서 검증한다.
 
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};

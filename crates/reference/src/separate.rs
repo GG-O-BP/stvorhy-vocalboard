@@ -342,6 +342,10 @@ impl MdxStft {
                     spectrum[f] = Complex::default();
                 }
             }
+            // realfft 역변환 요건: DC/나이퀴스트 빈은 실수여야 한다.
+            // 모델 출력 추정치는 이를 보장하지 않으므로 강제한다.
+            spectrum[0].im = 0.0;
+            spectrum[MDX_N_FFT / 2].im = 0.0;
             self.ifft.process(&mut spectrum, &mut frame).expect("ifft");
             let start = t * MDX_HOP;
             let scale = 1.0 / MDX_N_FFT as f32; // realfft 비정규화 보정
@@ -555,6 +559,33 @@ mod tests {
         // accomp = mix − vocals×1.021 ≈ −0.021×mix.
         let i = n / 2;
         assert!((stems.accompaniment.left[i] + 0.021 * mix.left[i]).abs() < 5e-3);
+    }
+
+    /// 모델 출력이 DC 빈 허수부를 더럽혀도 iSTFT가 죽지 않아야 한다
+    /// (실모델 회귀: realfft는 DC/나이퀴스트 허수부 0을 요구).
+    struct DirtyDcSpectro;
+    impl SpectroModel for DirtyDcSpectro {
+        fn run(&mut self, spec: &[f32]) -> Result<Vec<f32>, ReferenceError> {
+            let mut out = spec.to_vec();
+            let plane = MDX_DIM_F * MDX_DIM_T;
+            for ch in [1usize, 3] {
+                // im 채널의 f=0 행을 오염.
+                for t in 0..MDX_DIM_T {
+                    out[ch * plane + t] = 0.37;
+                }
+            }
+            Ok(out)
+        }
+    }
+
+    #[test]
+    fn mdx_tolerates_dirty_dc_bin() {
+        let n = MDX_CHUNK;
+        let mix = StereoPcm { left: tone(n, 440.0), right: tone(n, 440.0) };
+        let mut sep = MdxSeparator::new(DirtyDcSpectro);
+        let stems = sep.separate(&mix, &mut |_| {}).unwrap();
+        assert_eq!(stems.vocals.left.len(), n);
+        assert!(stems.vocals.left.iter().all(|v| v.is_finite()));
     }
 
     struct IdentityWave(usize);
