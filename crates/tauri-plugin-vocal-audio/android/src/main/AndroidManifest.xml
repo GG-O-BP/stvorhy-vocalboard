@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 마이크 캡처 (런타임 권한은 플러그인 alias "microphone"로 요청) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 백그라운드 캡처 유지용 포그라운드 서비스 (API 34+: 타입별 권한 필수) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 포그라운드 서비스 알림 표시 (API 33+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- BT 헤드셋 라우트 식별 (API 31+) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <application>
+        <service
+            android:name="app.vocalboard.plugin.CaptureForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+    </application>
+</manifest>

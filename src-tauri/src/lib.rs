@@ -105,6 +105,7 @@ fn stop_capture(state: State<'_, AppState>) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_vocal_audio::init())
         .manage(AppState::default())
         .setup(|app| {
             // store에 저장된 설정을 초기 로드 (프론트 configure 이전의 기본).

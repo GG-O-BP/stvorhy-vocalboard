@@ -29,6 +29,22 @@ impl OrtEngine {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, DspError> {
         let session = Session::builder()
             .and_then(|b| Ok(b.with_intra_threads(1)?))
+            .and_then(|b| {
+                // 모바일 EP는 피처로 주입 (미지원 그래프는 CPU 폴백).
+                #[allow(unused_mut)]
+                let mut eps: Vec<ort::ep::ExecutionProviderDispatch> = Vec::new();
+                #[cfg(feature = "ep-coreml")]
+                eps.push(ort::ep::CoreML::default().build());
+                #[cfg(feature = "ep-nnapi")]
+                eps.push(ort::ep::NNAPI::default().build());
+                #[cfg(feature = "ep-xnnpack")]
+                eps.push(ort::ep::XNNPACK::default().build());
+                if eps.is_empty() {
+                    Ok(b)
+                } else {
+                    Ok(b.with_execution_providers(eps)?)
+                }
+            })
             .and_then(|mut b| Ok(b.commit_from_file(path.as_ref())?))
             .map_err(|e: ort::Error| DspError::Inference(e.to_string()))?;
         let input_name = session

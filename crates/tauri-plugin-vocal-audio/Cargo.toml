@@ -4,6 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Mobile audio environment plugin: permissions, audio session, focus, routes, keep-awake"
+links = "tauri-plugin-vocal-audio"
+
+[build-dependencies]
+tauri-plugin = { version = "=2.6.3", features = ["build"] }
 
 [dependencies]
+tauri = { version = "=2.11.5", features = [] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }

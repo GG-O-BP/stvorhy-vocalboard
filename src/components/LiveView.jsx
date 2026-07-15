@@ -2,6 +2,14 @@ import { createSignal, onCleanup, Show } from "solid-js";
 import { startCapture, stopCapture } from "../lib/ipc.js";
 import { formatCents, midiToNoteName } from "../lib/noteNames.js";
 import { createReadoutThrottle } from "../lib/throttle.js";
+import {
+  configureSession,
+  releaseSession,
+  requestPermissions,
+  setKeepScreenOn,
+  startForegroundService,
+  stopForegroundService,
+} from "../lib/vocalAudio.js";
 import { createPianoRoll } from "../render/pianoRoll.js";
 
 /** @typedef {import("../lib/types.js").PitchFrame} PitchFrame */
@@ -29,6 +37,17 @@ export default function LiveView() {
     if (running() || busy) return;
     busy = true;
     try {
+      // 모바일: 런타임 권한 → 오디오 세션 → 화면 유지 → 포그라운드 서비스.
+      // 데스크톱 스텁은 전부 즉시 성공한다.
+      const perm = await requestPermissions();
+      if (perm.microphone !== "granted") {
+        setStatus("마이크 권한이 거부되었습니다");
+        return;
+      }
+      await configureSession({ playback: false });
+      await setKeepScreenOn(true);
+      await startForegroundService();
+
       if (!roll && host) {
         roll = await createPianoRoll(host);
       }
@@ -57,6 +76,11 @@ export default function LiveView() {
     } catch (e) {
       setStatus(String(e));
     } finally {
+      await Promise.allSettled([
+        stopForegroundService(),
+        setKeepScreenOn(false),
+        releaseSession(),
+      ]);
       throttle?.stop();
       throttle = null;
       setRunning(false);

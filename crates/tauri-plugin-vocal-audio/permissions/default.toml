@@ -1,0 +1,16 @@
+# 앱 기본 권한 집합 — 모든 플러그인 커맨드 허용.
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Vocalboard 오디오 환경 플러그인 기본 권한"
+permissions = [
+    "allow-check-permissions",
+    "allow-request-permissions",
+    "allow-configure-session",
+    "allow-release-session",
+    "allow-set-keep-screen-on",
+    "allow-current-route",
+    "allow-start-foreground-service",
+    "allow-stop-foreground-service",
+    "allow-exclude-from-backup",
+]

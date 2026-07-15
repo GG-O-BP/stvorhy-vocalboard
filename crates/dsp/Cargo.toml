@@ -11,3 +11,13 @@ serde = { workspace = true }
 biquad = "=0.6.0"
 rubato = "=4.0.0"
 ort = "=2.0.0-rc.12"
+
+[features]
+# 모바일 EP (스펙 §3: CoreML/NNAPI/XNNPACK EP는 모바일 단계).
+# 예: iOS  → --features vocalboard-dsp/ep-coreml
+#     Android → --features vocalboard-dsp/ep-xnnpack (또는 ep-nnapi)
+ep-coreml = ["ort/coreml"]
+ep-nnapi = ["ort/nnapi"]
+ep-xnnpack = ["ort/xnnpack"]
+# onnxruntime을 런타임 dlopen으로 로드 (Android에서 .so를 jniLibs로 동봉할 때).
+ort-load-dynamic = ["ort/load-dynamic"]
