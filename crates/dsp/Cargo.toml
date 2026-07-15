@@ -1,0 +1,10 @@
+[package]
+name = "vocalboard-dsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Realtime vocal DSP: HPF, decimation, RMS gate, SwiftF0 inference, PitchFrame assembly"
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }

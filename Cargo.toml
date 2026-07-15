@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/codec",
+    "crates/dsp",
+    "crates/storage",
+    "crates/reference",
+    "crates/tauri-plugin-vocal-audio",
+    "src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+thiserror = "=2.0.18"
+zstd = "=0.13.3"
+
+vocalboard-codec = { path = "crates/codec" }
+vocalboard-dsp = { path = "crates/dsp" }
+vocalboard-storage = { path = "crates/storage" }
+vocalboard-reference = { path = "crates/reference" }
+tauri-plugin-vocal-audio = { path = "crates/tauri-plugin-vocal-audio" }
+
+# DSP 스레드는 RT 콜백이 아니므로 릴리스 최적화는 필수 아님. 단 FIR/추론이
+# debug에서 지나치게 느려지는 것을 피하기 위해 의존성만 최적화한다.
+[profile.dev.package."*"]
+opt-level = 2

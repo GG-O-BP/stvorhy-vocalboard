@@ -1,0 +1,9 @@
+[package]
+name = "tauri-plugin-vocal-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Mobile audio environment plugin: permissions, audio session, focus, routes, keep-awake"
+
+[dependencies]
+thiserror = { workspace = true }

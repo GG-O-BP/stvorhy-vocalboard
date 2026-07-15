@@ -1,0 +1,10 @@
+[package]
+name = "vocalboard-codec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "F0C1 pitch-frame codec (+zstd) and preview blob computation"
+
+[dependencies]
+thiserror = { workspace = true }
+zstd = { workspace = true }

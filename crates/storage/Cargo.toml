@@ -1,0 +1,9 @@
+[package]
+name = "vocalboard-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Session persistence: sqlite storage thread, f0raw journal, recordings"
+
+[dependencies]
+thiserror = { workspace = true }
