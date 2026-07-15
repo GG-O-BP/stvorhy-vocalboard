@@ -1,6 +1,7 @@
 mod audio;
 mod config;
 mod player;
+mod tracks;
 
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -18,16 +19,16 @@ use vocalboard_storage::{db, FinalizedSession, RecordingSpec, StorageHandle, Sto
 use audio::{Capture, CaptureInfo, FrameSink};
 use config::AppConfig;
 
-struct AppState {
-    capture: Mutex<Option<Capture>>,
-    config: Mutex<AppConfig>,
-    storage: Mutex<Option<StorageHandle>>,
-    playback: Mutex<Option<player::Player>>,
-    root: StorageRoot,
+pub(crate) struct AppState {
+    pub(crate) capture: Mutex<Option<Capture>>,
+    pub(crate) config: Mutex<AppConfig>,
+    pub(crate) storage: Mutex<Option<StorageHandle>>,
+    pub(crate) playback: Mutex<Option<player::Player>>,
+    pub(crate) root: StorageRoot,
 }
 
 /// SwiftF0 모델 탐색: 환경변수 → app_data/models → (dev 빌드) 저장소 models/.
-fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
+pub(crate) fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(p) = std::env::var("VOCALBOARD_SWIFTF0") {
         let p = PathBuf::from(p);
         if p.exists() {
@@ -93,10 +94,10 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-#[tauri::command]
-fn start_capture(
-    app: AppHandle,
-    state: State<'_, AppState>,
+/// 세션+캡처 공통 시작 경로 (라이브/연습 겸용).
+fn begin_capture_session(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
     channel: Channel<PitchFrame>,
     track_id: Option<String>,
 ) -> Result<CaptureInfo, String> {
@@ -105,10 +106,10 @@ fn start_capture(
     // 기존 캡처는 교체한다 (이전 세션은 정상 마감·저장).
     if let Some(old) = slot.take() {
         old.stop();
-        end_session(&state, false).ok();
+        end_session(state, false).ok();
     }
 
-    let engine = make_engine(&app)?;
+    let engine = make_engine(app)?;
     let cfg = *state.config.lock().unwrap();
     let info = audio::probe()?;
 
@@ -124,6 +125,7 @@ fn start_capture(
                 .recording_enabled
                 .then_some(RecordingSpec { sample_rate: info.sample_rate }),
             recording_keep_last: cfg.recording_keep_last,
+            latency_calib_ms: cfg.latency_calib_ms,
         })
         .map_err(|e| e.to_string())?;
 
@@ -136,6 +138,16 @@ fn start_capture(
     let info = capture.info.clone();
     *slot = Some(capture);
     Ok(info)
+}
+
+#[tauri::command]
+fn start_capture(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    channel: Channel<PitchFrame>,
+    track_id: Option<String>,
+) -> Result<CaptureInfo, String> {
+    begin_capture_session(&app, &state, channel, track_id)
 }
 
 /// 진행 중 세션을 마감한다. discard=true면 저장하지 않는다.
@@ -210,8 +222,8 @@ fn play_recording(
     if !path.exists() {
         return Err("녹음 파일이 없습니다".into());
     }
-    let clip = player::Clip::from_wav(&path)?;
-    let duration_ms = (clip.samples.len() as u64 * 1000 / clip.sample_rate.max(1) as u64) as u32;
+    let clip = player::Clip::from_file(&path)?;
+    let duration_ms = clip.duration_ms();
 
     let mut slot = state.playback.lock().unwrap();
     if let Some(old) = slot.take() {
@@ -260,10 +272,134 @@ fn playback_stop(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// 헤드폰 라우트 게이트 (가드레일: 반주 재생+캡처 동시 모드는 헤드폰
+/// 라우트 감지 시에만 — 스피커는 에코 오염).
+fn check_headphone_gate(app: &AppHandle, headphone_override: bool) -> Result<(), String> {
+    use tauri_plugin_vocal_audio::VocalAudioExt;
+    let route = app
+        .vocal_audio()
+        .current_route()
+        .map_err(|e| e.to_string())?;
+    match route.headphones {
+        Some(true) => Ok(()),
+        Some(false) if headphone_override => Ok(()),
+        Some(false) => Err(format!(
+            "HEADPHONE_GATE:스피커 출력이 감지되었습니다 ({}) — 에코가 분석을 오염시킵니다. \
+             헤드폰을 연결하세요.",
+            route.description
+        )),
+        None if headphone_override => Ok(()),
+        None => Err(
+            "HEADPHONE_GATE:출력 라우트를 판별할 수 없습니다. 헤드폰 사용을 확인해 주세요."
+                .into(),
+        ),
+    }
+}
+
+#[derive(serde::Serialize)]
+struct PracticeInfo {
+    capture: CaptureInfo,
+    duration_ms: u32,
+}
+
+/// 연습 모드: 반주 재생 + 캡처 + 채점 세션을 한 번에 시작한다.
+/// `playback=false`면 무반주 연습 (라우트 게이트 없음).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn practice_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    track_id: String,
+    playback: bool,
+    headphone_override: bool,
+    pitch: Channel<PitchFrame>,
+    playhead: Channel<player::PlayheadEvent>,
+) -> Result<PracticeInfo, String> {
+    if tracks::job_running(&app, &track_id) {
+        return Err("이 트랙은 분리 작업이 진행 중입니다".into());
+    }
+    let clip = if playback {
+        check_headphone_gate(&app, headphone_override)?;
+        let path = tracks::accompaniment_path(&state.root, &track_id);
+        if !path.exists() {
+            return Err("반주 스템이 없습니다 — 트랙 분리를 먼저 실행하세요".into());
+        }
+        Some(player::Clip::from_file(&path)?)
+    } else {
+        None
+    };
+
+    let capture = begin_capture_session(&app, &state, pitch, Some(track_id))?;
+
+    let duration_ms = match clip {
+        Some(clip) => {
+            let d = clip.duration_ms();
+            let mut slot = state.playback.lock().unwrap();
+            if let Some(old) = slot.take() {
+                old.stop();
+            }
+            let p = player::play(
+                clip,
+                0,
+                Box::new(move |e| {
+                    let _ = playhead.send(e);
+                }),
+            )?;
+            *slot = Some(p);
+            d
+        }
+        None => 0,
+    };
+    Ok(PracticeInfo { capture, duration_ms })
+}
+
+/// 연습 종료: 재생·캡처를 멈추고 세션을 마감(채점 포함)한다.
+#[tauri::command]
+fn practice_stop(state: State<'_, AppState>) -> Result<Option<FinalizedSession>, String> {
+    if let Some(p) = state.playback.lock().unwrap().take() {
+        p.stop();
+    }
+    let mut slot = state.capture.lock().unwrap();
+    if let Some(c) = slot.take() {
+        c.stop();
+    }
+    drop(slot);
+    end_session(&state, false)
+}
+
+/// 노래방 모드: 반주만 재생 (캡처 없음 — 스피커 허용).
+#[tauri::command]
+fn karaoke_start(
+    state: State<'_, AppState>,
+    track_id: String,
+    playhead: Channel<player::PlayheadEvent>,
+) -> Result<u32, String> {
+    let path = tracks::accompaniment_path(&state.root, &track_id);
+    if !path.exists() {
+        return Err("반주 스템이 없습니다 — 트랙 분리를 먼저 실행하세요".into());
+    }
+    let clip = player::Clip::from_file(&path)?;
+    let duration_ms = clip.duration_ms();
+    let mut slot = state.playback.lock().unwrap();
+    if let Some(old) = slot.take() {
+        old.stop();
+    }
+    let p = player::play(
+        clip,
+        0,
+        Box::new(move |e| {
+            let _ = playhead.send(e);
+        }),
+    )?;
+    *slot = Some(p);
+    Ok(duration_ms)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_vocal_audio::init())
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
@@ -280,6 +416,7 @@ pub fn run() {
                 playback: Mutex::new(None),
                 root,
             });
+            tracks::init(app.handle());
             // store에 저장된 설정을 초기 로드 (프론트 configure 이전의 기본).
             let store = app.store("settings.json")?;
             if let Some(v) = store.get("config") {
@@ -314,7 +451,15 @@ pub fn run() {
             playback_pause,
             playback_resume,
             playback_seek,
-            playback_stop
+            playback_stop,
+            tracks::import_track,
+            tracks::separate_track,
+            tracks::list_tracks,
+            tracks::track_series,
+            tracks::delete_track,
+            practice_start,
+            practice_stop,
+            karaoke_start
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

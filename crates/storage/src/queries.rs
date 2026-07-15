@@ -49,6 +49,62 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<SessionListItem>, StorageE
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct TrackListItem {
+    pub id: String,
+    pub title: Option<String>,
+    pub duration_ms: u32,
+    pub separated: bool,
+    pub sep_model: Option<String>,
+    pub notes_json: Option<String>,
+    pub created_at: i64,
+    pub preview: Option<Vec<u8>>,
+}
+
+pub fn list_tracks(conn: &Connection) -> Result<Vec<TrackListItem>, StorageError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, duration_ms, separated, sep_model, notes_json, created_at, preview
+         FROM tracks ORDER BY created_at DESC",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(TrackListItem {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                duration_ms: r.get::<_, Option<u32>>(2)?.unwrap_or(0),
+                separated: r.get::<_, Option<i64>>(3)?.unwrap_or(0) != 0,
+                sep_model: r.get(4)?,
+                notes_json: r.get(5)?,
+                created_at: r.get::<_, Option<i64>>(6)?.unwrap_or(0),
+                preview: r.get(7)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// 트랙 소스 파일 상대 경로 (재생/재분리용).
+pub fn track_source_path(conn: &Connection, id: &str) -> Result<Option<String>, StorageError> {
+    Ok(conn.query_row("SELECT source_path FROM tracks WHERE id = ?1", [id], |r| r.get(0))?)
+}
+
+/// 트랙 분리 캐시 상태: (separated, sep_model).
+pub fn track_sep_state(
+    conn: &Connection,
+    id: &str,
+) -> Result<(bool, Option<String>), StorageError> {
+    Ok(conn.query_row(
+        "SELECT separated, sep_model FROM tracks WHERE id = ?1",
+        [id],
+        |r| {
+            Ok((
+                r.get::<_, Option<i64>>(0)?.unwrap_or(0) != 0,
+                r.get(1)?,
+            ))
+        },
+    )?)
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct SessionDetail {
     pub id: String,
     pub started_at: i64,
@@ -126,7 +182,25 @@ pub fn session_series(
         [id],
         |r| r.get(0),
     )?;
-    let (header, frames) = decode_compressed(&blob)?;
+    decimate_blob(&blob, max_points)
+}
+
+/// 트랙 레퍼런스 피치의 데시메이션 시리즈 (연습 오버레이/미리보기용).
+pub fn track_series(
+    conn: &Connection,
+    id: &str,
+    max_points: u32,
+) -> Result<SessionSeries, StorageError> {
+    let blob: Option<Vec<u8>> =
+        conn.query_row("SELECT pitch FROM tracks WHERE id = ?1", [id], |r| r.get(0))?;
+    let blob = blob.ok_or_else(|| {
+        StorageError::Other("트랙에 추출된 피치가 없습니다 (분리를 먼저 실행)".into())
+    })?;
+    decimate_blob(&blob, max_points)
+}
+
+fn decimate_blob(blob: &[u8], max_points: u32) -> Result<SessionSeries, StorageError> {
+    let (header, frames) = decode_compressed(blob)?;
     let n = frames.len();
     let max_points = max_points.max(1) as usize;
     let hop_ms = header.hop_ms as u32;
@@ -188,6 +262,7 @@ mod tests {
                 octave_invariant: false,
                 recording: None,
                 recording_keep_last: 10,
+                latency_calib_ms: 0,
             })
             .unwrap();
         let tx = handle.sender();

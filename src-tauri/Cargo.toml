@@ -28,3 +28,8 @@ uuid = { version = "=1.23.5", features = ["v4"] }
 vocalboard-storage = { workspace = true }
 vocalboard-codec = { workspace = true }
 hound = "=3.5.1"
+vocalboard-reference = { workspace = true }
+tauri-plugin-dialog = "=2.7.1"
+
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-fs = "=2.5.1"

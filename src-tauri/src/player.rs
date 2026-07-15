@@ -13,47 +13,30 @@ use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::Serialize;
 
-/// 프리롤된 mono PCM 클립.
+/// 프리롤된 interleaved PCM 클립.
 pub struct Clip {
     pub samples: Arc<Vec<f32>>,
+    pub channels: u16,
     pub sample_rate: u32,
 }
 
 impl Clip {
-    pub fn from_wav(path: &std::path::Path) -> Result<Self, String> {
-        let mut reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
-        let spec = reader.spec();
-        let ch = spec.channels.max(1) as usize;
-        let mut mono: Vec<f32> = Vec::with_capacity(reader.len() as usize / ch);
-        match (spec.sample_format, spec.bits_per_sample) {
-            (hound::SampleFormat::Int, 16) => {
-                let mut acc = 0.0f32;
-                for (i, s) in reader.samples::<i16>().enumerate() {
-                    let v = s.map_err(|e| e.to_string())? as f32 / 32768.0;
-                    acc += v;
-                    if i % ch == ch - 1 {
-                        mono.push(acc / ch as f32);
-                        acc = 0.0;
-                    }
-                }
-            }
-            (hound::SampleFormat::Float, 32) => {
-                let mut acc = 0.0f32;
-                for (i, s) in reader.samples::<f32>().enumerate() {
-                    let v = s.map_err(|e| e.to_string())?;
-                    acc += v;
-                    if i % ch == ch - 1 {
-                        mono.push(acc / ch as f32);
-                        acc = 0.0;
-                    }
-                }
-            }
-            (f, b) => return Err(format!("미지원 WAV 포맷: {f:?}/{b}bit")),
-        }
+    /// symphonia로 디코드 (WAV/FLAC/MP3/AAC-LC/OGG).
+    pub fn from_file(path: &std::path::Path) -> Result<Self, String> {
+        let d = vocalboard_reference::decode::decode_file(path).map_err(|e| e.to_string())?;
         Ok(Self {
-            samples: Arc::new(mono),
-            sample_rate: spec.sample_rate,
+            samples: Arc::new(d.samples),
+            channels: d.channels.max(1),
+            sample_rate: d.sample_rate,
         })
+    }
+
+    pub fn frames(&self) -> usize {
+        self.samples.len() / self.channels.max(1) as usize
+    }
+
+    pub fn duration_ms(&self) -> u32 {
+        (self.frames() as u64 * 1000 / self.sample_rate.max(1) as u64) as u32
     }
 }
 
@@ -125,16 +108,30 @@ pub fn play(
     let sample_format = config.sample_format();
     let stream_config: cpal::StreamConfig = config.into();
 
-    // 장치 SR로 프리롤 리샘플 (오프라인, 재생 전 1회).
+    // 장치 SR로 프리롤 리샘플 (오프라인, 재생 전 1회, 채널별).
+    let clip_ch = clip.channels.max(1) as usize;
     let samples: Arc<Vec<f32>> = if clip.sample_rate == out_sr {
         clip.samples
     } else {
-        Arc::new(
-            vocalboard_dsp::resample::resample_all(&clip.samples, clip.sample_rate, out_sr)
-                .map_err(|e| e.to_string())?,
-        )
+        let frames = clip.samples.len() / clip_ch;
+        let mut per_ch: Vec<Vec<f32>> = Vec::with_capacity(clip_ch);
+        for c in 0..clip_ch {
+            let chan: Vec<f32> = (0..frames).map(|i| clip.samples[i * clip_ch + c]).collect();
+            per_ch.push(
+                vocalboard_dsp::resample::resample_all(&chan, clip.sample_rate, out_sr)
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        let out_frames = per_ch.iter().map(|v| v.len()).min().unwrap_or(0);
+        let mut inter = Vec::with_capacity(out_frames * clip_ch);
+        for i in 0..out_frames {
+            for chan in &per_ch {
+                inter.push(chan[i]);
+            }
+        }
+        Arc::new(inter)
     };
-    let total = samples.len() as u64;
+    let total = (samples.len() / clip_ch) as u64;
 
     let shared = Arc::new(PlayerShared {
         pos: AtomicU64::new(((start_ms as u64) * out_sr as u64 / 1000).min(total)),
@@ -165,15 +162,18 @@ pub fn play(
                             let playing = s.playing.load(Ordering::Acquire);
                             let mut pos = s.pos.load(Ordering::Acquire);
                             for frame in out.chunks_mut(out_ch) {
-                                let v = if playing && pos < s.total {
-                                    let sample = data_arc[pos as usize];
+                                if playing && pos < s.total {
+                                    let base = pos as usize * clip_ch;
+                                    for (i, slot) in frame.iter_mut().enumerate() {
+                                        // 클립 채널 부족분은 마지막 채널 복제.
+                                        let c = i.min(clip_ch - 1);
+                                        *slot = $conv(data_arc[base + c]);
+                                    }
                                     pos += 1;
-                                    sample
                                 } else {
-                                    0.0
-                                };
-                                for slot in frame.iter_mut() {
-                                    *slot = $conv(v);
+                                    for slot in frame.iter_mut() {
+                                        *slot = $conv(0.0);
+                                    }
                                 }
                             }
                             if playing {

@@ -9,6 +9,7 @@
 use thiserror::Error;
 
 pub mod preview;
+pub mod scoring;
 
 /// 저장 계층이 sessions.codec / tracks.pitch_codec 에 기록하는 식별자.
 pub const CODEC_NAME: &str = "f0c1+zstd";

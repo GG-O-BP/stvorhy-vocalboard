@@ -31,6 +31,8 @@ pub struct BeginSession {
     pub recording: Option<RecordingSpec>,
     /// 보존 정책 (최근 N개). 세션 종료 시 적용.
     pub recording_keep_last: u32,
+    /// 채점 정렬용 지연 캘리브레이션 (ms, 사용자 프레임 보정 §5).
+    pub latency_calib_ms: i32,
 }
 
 /// 세션 종료 요약 (프론트 회신용).
@@ -48,6 +50,27 @@ pub struct FinalizedSession {
     pub recording_path: Option<String>,
 }
 
+/// 트랙 행 삽입/갱신 (임포트 시).
+#[derive(Debug, Clone)]
+pub struct UpsertTrack {
+    pub id: String,
+    pub title: String,
+    pub source_path: String,
+    pub duration_ms: u32,
+    pub created_at_ms: i64,
+}
+
+/// 분리+추출 완료 결과 반영.
+#[derive(Debug, Clone)]
+pub struct UpdateTrackPitch {
+    pub id: String,
+    pub sep_model: String,
+    pub pitch_blob: Vec<u8>,
+    pub pitch_codec: String,
+    pub notes_json: String,
+    pub preview: Vec<u8>,
+}
+
 pub enum StorageMsg {
     Begin(BeginSession),
     Frame(F0Frame),
@@ -55,6 +78,18 @@ pub enum StorageMsg {
     End {
         discard: bool,
         reply: SyncSender<Result<Option<FinalizedSession>, String>>,
+    },
+    UpsertTrack {
+        track: UpsertTrack,
+        reply: SyncSender<Result<(), String>>,
+    },
+    UpdateTrackPitch {
+        update: Box<UpdateTrackPitch>,
+        reply: SyncSender<Result<(), String>>,
+    },
+    DeleteTrack {
+        id: String,
+        reply: SyncSender<Result<(), String>>,
     },
     Shutdown,
 }
@@ -87,6 +122,36 @@ impl StorageHandle {
         let (reply, rx) = std::sync::mpsc::sync_channel(1);
         self.tx
             .send(StorageMsg::End { discard, reply })
+            .map_err(|_| StorageError::Other("storage thread down".into()))?;
+        rx.recv()
+            .map_err(|_| StorageError::Other("storage thread dropped reply".into()))?
+            .map_err(StorageError::Other)
+    }
+
+    pub fn upsert_track(&self, track: UpsertTrack) -> Result<(), StorageError> {
+        let (reply, rx) = std::sync::mpsc::sync_channel(1);
+        self.tx
+            .send(StorageMsg::UpsertTrack { track, reply })
+            .map_err(|_| StorageError::Other("storage thread down".into()))?;
+        rx.recv()
+            .map_err(|_| StorageError::Other("storage thread dropped reply".into()))?
+            .map_err(StorageError::Other)
+    }
+
+    pub fn update_track_pitch(&self, update: UpdateTrackPitch) -> Result<(), StorageError> {
+        let (reply, rx) = std::sync::mpsc::sync_channel(1);
+        self.tx
+            .send(StorageMsg::UpdateTrackPitch { update: Box::new(update), reply })
+            .map_err(|_| StorageError::Other("storage thread down".into()))?;
+        rx.recv()
+            .map_err(|_| StorageError::Other("storage thread dropped reply".into()))?
+            .map_err(StorageError::Other)
+    }
+
+    pub fn delete_track(&self, id: String) -> Result<(), StorageError> {
+        let (reply, rx) = std::sync::mpsc::sync_channel(1);
+        self.tx
+            .send(StorageMsg::DeleteTrack { id, reply })
             .map_err(|_| StorageError::Other("storage thread down".into()))?;
         rx.recv()
             .map_err(|_| StorageError::Other("storage thread dropped reply".into()))?
@@ -288,6 +353,49 @@ fn run(conn: Connection, root: StorageRoot, rx: Receiver<StorageMsg>) {
                 };
                 let _ = reply.send(outcome.map(|o| o.flatten()));
             }
+            StorageMsg::UpsertTrack { track, reply } => {
+                let r = conn
+                    .execute(
+                        "INSERT INTO tracks (id, title, source_path, duration_ms, separated, created_at)
+                         VALUES (?1, ?2, ?3, ?4, 0, ?5)
+                         ON CONFLICT(id) DO UPDATE SET title=?2, source_path=?3, duration_ms=?4",
+                        params![
+                            track.id,
+                            track.title,
+                            track.source_path,
+                            track.duration_ms,
+                            track.created_at_ms
+                        ],
+                    )
+                    .map(|_| ())
+                    .map_err(|e| e.to_string());
+                let _ = reply.send(r);
+            }
+            StorageMsg::UpdateTrackPitch { update, reply } => {
+                let r = conn
+                    .execute(
+                        "UPDATE tracks SET separated=1, sep_model=?2, pitch_codec=?3,
+                                pitch=?4, notes_json=?5, preview=?6 WHERE id=?1",
+                        params![
+                            update.id,
+                            update.sep_model,
+                            update.pitch_codec,
+                            update.pitch_blob,
+                            update.notes_json,
+                            update.preview
+                        ],
+                    )
+                    .map(|_| ())
+                    .map_err(|e| e.to_string());
+                let _ = reply.send(r);
+            }
+            StorageMsg::DeleteTrack { id, reply } => {
+                let r = conn
+                    .execute("DELETE FROM tracks WHERE id=?1", params![id])
+                    .map(|_| ())
+                    .map_err(|e| e.to_string());
+                let _ = reply.send(r);
+            }
             StorageMsg::Shutdown => {
                 if let Some(s) = active.take() {
                     // 앱 종료 중에도 데이터는 살린다.
@@ -298,6 +406,23 @@ fn run(conn: Connection, root: StorageRoot, rx: Receiver<StorageMsg>) {
                 break;
             }
         }
+    }
+}
+
+/// 트랙의 F0C1 프레임 로드 (채점용).
+fn load_track_frames(
+    conn: &Connection,
+    track_id: &str,
+) -> Result<Option<Vec<F0Frame>>, StorageError> {
+    let blob: Option<Vec<u8>> = conn
+        .query_row("SELECT pitch FROM tracks WHERE id = ?1", [track_id], |r| r.get(0))
+        .map_err(|e| StorageError::Other(e.to_string()))?;
+    match blob {
+        Some(b) => {
+            let (_, frames) = vocalboard_codec::decode_compressed(&b)?;
+            Ok(Some(frames))
+        }
+        None => Ok(None),
     }
 }
 
@@ -347,8 +472,29 @@ fn finalize(
         None => None,
     };
 
-    // 채점(mean_abs_cents/mean_score)은 Phase 3.5에서 레퍼런스 프레임과
-    // 정렬해 계산한다. 트랙 없는 세션은 NULL.
+    // 채점 (§5): 트랙 참조 세션이면 레퍼런스 프레임과 정렬해 계산.
+    let (mean_abs_cents, mean_score) = match meta.track_id.as_deref() {
+        Some(track_id) => match load_track_frames(conn, track_id) {
+            Ok(Some(reference)) => {
+                let offset = (meta.latency_calib_ms as f32 / vocalboard_codec::HOP_MS as f32)
+                    .round() as i32;
+                let s = vocalboard_codec::scoring::score_session(
+                    &frames,
+                    &reference,
+                    meta.octave_invariant,
+                    offset,
+                );
+                (s.mean_abs_cents, s.mean_score)
+            }
+            Ok(None) => (None, None),
+            Err(e) => {
+                eprintln!("[storage] 채점용 트랙 로드 실패 {track_id}: {e}");
+                (None, None)
+            }
+        },
+        None => (None, None),
+    };
+
     let row = insert_session(
         conn,
         &meta.id,
@@ -357,8 +503,8 @@ fn finalize(
         meta.octave_invariant,
         &frames,
         recording_rel.as_deref(),
-        None,
-        None,
+        mean_abs_cents,
+        mean_score,
     )?;
     journal.remove()?;
 
@@ -396,6 +542,7 @@ mod tests {
                 octave_invariant: false,
                 recording: Some(RecordingSpec { sample_rate: 48_000 }),
                 recording_keep_last: 10,
+                latency_calib_ms: 0,
             })
             .unwrap();
         let sender = handle.sender();
@@ -447,6 +594,7 @@ mod tests {
                 octave_invariant: false,
                 recording: Some(RecordingSpec { sample_rate: 16_000 }),
                 recording_keep_last: 10,
+                latency_calib_ms: 0,
             })
             .unwrap();
         handle.sender().send(StorageMsg::Frame(voiced(60.0))).unwrap();
@@ -512,6 +660,7 @@ mod tests {
                 octave_invariant: false,
                 recording: None,
                 recording_keep_last: 10,
+                latency_calib_ms: 0,
             })
             .unwrap();
         let out = handle.end(false).unwrap();

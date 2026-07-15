@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "store:default",
+    "dialog:default",
     "vocal-audio:default"
   ]
 }
