@@ -27,6 +27,10 @@ pub(crate) struct AppState {
     pub(crate) root: StorageRoot,
 }
 
+/// 빌드 시점(build.rs)에 확보해 앱 바이너리에 임베드한 SwiftF0 모델(~398KB).
+/// resolve 경로가 모두 비면(모바일/신규 설치) 이것을 사용한다.
+pub(crate) static SWIFTF0_MODEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/swift_f0.onnx"));
+
 /// SwiftF0 모델 탐색: 환경변수 → app_data/models → (dev 빌드) 저장소 models/.
 pub(crate) fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
     if let Ok(p) = std::env::var("VOCALBOARD_SWIFTF0") {
@@ -51,18 +55,58 @@ pub(crate) fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
     None
 }
 
+/// cpal(AAudio 백엔드)의 기기·설정 조회는 JNI를 거치는데, 그 진입점인
+/// ndk_context를 Tauri(tao/wry)는 초기화하지 않는다. 미초기화 상태에서 캡처를
+/// 시작하면 `ndk_context::android_context()`가 패닉해 앱이 그대로 죽으므로,
+/// 웹뷰 JNI 핸들에서 JavaVM과 애플리케이션 컨텍스트를 얻어 1회 초기화한다.
+#[cfg(target_os = "android")]
+fn init_ndk_context(app: &AppHandle) -> tauri::Result<()> {
+    let window = app
+        .get_webview_window("main")
+        .expect("main 웹뷰 윈도우가 setup 전에 생성되어 있어야 한다");
+    window.with_webview(|webview| {
+        webview.jni_handle().exec(|env, activity, _webview| {
+            let mut init = || -> Result<(), jni::errors::Error> {
+                let vm = env.get_java_vm()?;
+                // 액티비티 재생성과 무관하게 유효하도록 앱 컨텍스트를 쓴다.
+                let ctx = env
+                    .call_method(
+                        activity,
+                        "getApplicationContext",
+                        "()Landroid/content/Context;",
+                        &[],
+                    )?
+                    .l()?;
+                let ctx = env.new_global_ref(ctx)?;
+                unsafe {
+                    ndk_context::initialize_android_context(
+                        vm.get_java_vm_pointer().cast(),
+                        ctx.as_raw().cast(),
+                    );
+                }
+                // ndk_context가 프로세스 수명 동안 참조하므로 해제하지 않는다.
+                std::mem::forget(ctx);
+                Ok(())
+            };
+            if let Err(e) = init() {
+                eprintln!("[app] ndk_context 초기화 실패 — 마이크 캡처 불가: {e}");
+            }
+        });
+    })
+}
+
 fn make_engine(app: &AppHandle) -> Result<Box<dyn InferenceEngine>, String> {
     if std::env::var("VOCALBOARD_ENGINE").is_ok_and(|v| v == "acf") {
         return Ok(Box::new(AcfEngine::new()));
     }
-    let path = resolve_model_path(app).ok_or_else(|| {
-        "SwiftF0 모델(swift_f0.onnx)을 찾을 수 없습니다. README의 '모델 확보' 절차를 따르거나 \
-         VOCALBOARD_SWIFTF0 환경변수를 설정하세요."
-            .to_string()
-    })?;
-    Ok(Box::new(
-        OrtEngine::from_file(&path).map_err(|e| format!("SwiftF0 로드 실패: {e}"))?,
-    ))
+    // resolve 경로(환경변수/app_data/dev 저장소)가 있으면 그 파일을, 없으면 빌드 시점에
+    // 임베드된 모델(build.rs + include_bytes!)을 쓴다 — 모바일/신규 설치는 후자.
+    let engine = match resolve_model_path(app) {
+        Some(p) => OrtEngine::from_file(&p),
+        None => OrtEngine::from_memory(SWIFTF0_MODEL),
+    }
+    .map_err(|e| format!("SwiftF0 로드 실패: {e}"))?;
+    Ok(Box::new(engine))
 }
 
 /// Channel + 스토리지로 팬아웃하는 DSP 싱크.
@@ -402,6 +446,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_vocal_audio::init())
         .setup(|app| {
+            #[cfg(target_os = "android")]
+            init_ndk_context(app.handle())?;
             let app_data = app.path().app_data_dir()?;
             let root = StorageRoot::new(&app_data);
             let (storage, recovered) =

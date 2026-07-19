@@ -14,6 +14,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
+# SwiftF0 모델을 빌드 시점에 받아 앱에 임베드(build.rs). 저장소 커밋은 안 함.
+ureq = "=3.3.0"
+sha2 = "=0.11.0"
 
 [dependencies]
 tauri = { version = "=2.11.5", features = [] }
@@ -33,3 +36,7 @@ tauri-plugin-dialog = "=2.7.1"
 
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-fs = "=2.5.1"
+# cpal AAudio 백엔드의 JNI 경로가 요구하는 ndk_context를 setup에서 직접 초기화
+# (tao/wry는 초기화하지 않음 — 미초기화 시 android_context()가 패닉해 앱 크래시).
+jni = "=0.21.1"
+ndk-context = "=0.1.1"

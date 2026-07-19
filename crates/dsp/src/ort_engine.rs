@@ -26,11 +26,12 @@ pub struct OrtEngine {
 }
 
 impl OrtEngine {
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, DspError> {
-        let session = Session::builder()
+    /// intra-thread 1 + (피처 주입 시) 모바일 EP까지 구성한 SessionBuilder.
+    /// 미지원 그래프는 ORT가 CPU로 폴백한다.
+    fn configured_builder() -> Result<ort::session::builder::SessionBuilder, ort::Error> {
+        Session::builder()
             .and_then(|b| Ok(b.with_intra_threads(1)?))
             .and_then(|b| {
-                // 모바일 EP는 피처로 주입 (미지원 그래프는 CPU 폴백).
                 #[allow(unused_mut)]
                 let mut eps: Vec<ort::ep::ExecutionProviderDispatch> = Vec::new();
                 #[cfg(feature = "ep-coreml")]
@@ -45,8 +46,10 @@ impl OrtEngine {
                     Ok(b.with_execution_providers(eps)?)
                 }
             })
-            .and_then(|mut b| Ok(b.commit_from_file(path.as_ref())?))
-            .map_err(|e: ort::Error| DspError::Inference(e.to_string()))?;
+    }
+
+    /// commit된 Session에서 입출력 텐서 이름을 확정한다.
+    fn from_session(session: Session) -> Result<Self, DspError> {
         let input_name = session
             .inputs()
             .first()
@@ -70,6 +73,26 @@ impl OrtEngine {
             pitch_output,
             conf_output,
         })
+    }
+
+    /// 파일 경로에서 로드 (데스크톱 dev·명시 오버라이드용).
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, DspError> {
+        let mut builder =
+            Self::configured_builder().map_err(|e: ort::Error| DspError::Inference(e.to_string()))?;
+        let session = builder
+            .commit_from_file(path.as_ref())
+            .map_err(|e: ort::Error| DspError::Inference(e.to_string()))?;
+        Self::from_session(session)
+    }
+
+    /// 메모리(바이트 슬라이스)에서 로드 — 앱에 임베드된 모델용(build.rs + include_bytes!).
+    pub fn from_memory(model: &[u8]) -> Result<Self, DspError> {
+        let mut builder =
+            Self::configured_builder().map_err(|e: ort::Error| DspError::Inference(e.to_string()))?;
+        let session = builder
+            .commit_from_memory(model)
+            .map_err(|e: ort::Error| DspError::Inference(e.to_string()))?;
+        Self::from_session(session)
     }
 }
 

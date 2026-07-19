@@ -5,7 +5,8 @@
 - 세션 녹음(WAV) 및 세션 기록 저장/리뷰
 - 레퍼런스 트랙: 오디오 파일 임포트 → 보컬 분리 → 레퍼런스 피치를 그래프에
   보조 표시 → 같은 피치로 따라 부르는 연습 + cents 편차 채점(옥타브 불변 옵션)
-- 타겟: iOS / Android (Tauri 2 모바일). 데스크톱 빌드는 개발·검증용.
+- 타겟: iOS / Android (Tauri 2 모바일). Android 최소 지원 API 26(8.0) —
+  AAudio 캡처·AudioFocusRequest 전제. 데스크톱 빌드는 개발·검증용.
 
 ## §2 아키텍처 (데이터 흐름)
 ```
@@ -129,3 +130,6 @@ tracks(id TEXT PK, title TEXT, source_path TEXT, duration_ms INTEGER,
   cents 기준·음이름 처리 명시(§5), 채점 공식·preview 포맷·rms 인코딩 정의(§5),
   track_id ON DELETE SET NULL + foreign_keys=ON(§5), Phase 0 사전 정비 추가(§6).
 - 2026-07-15: 프론트 언어 JS 확정(§3). CLAUDE.md 가드레일 표기도 동기화.
+- 2026-07-18: Android 최소 지원 API 26(8.0) 명시(§1) — cpal AAudio 백엔드와
+  플러그인 AudioFocusRequest가 26+ 전제. tauri.conf.json(bundle.android.
+  minSdkVersion)·앱/플러그인 gradle minSdk 26 반영.

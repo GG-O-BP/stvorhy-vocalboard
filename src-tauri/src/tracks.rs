@@ -9,7 +9,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 use vocalboard_codec::preview::compute_preview;
 use vocalboard_reference::decode::decode_file;
-use vocalboard_reference::download::{ensure_model, SWIFTF0};
+use vocalboard_reference::download::ensure_model;
 use vocalboard_reference::extract::{
     bridge_gaps, extract_frames, segment_notes, stem_to_16k, ExtractParams, SegmentParams,
 };
@@ -115,14 +115,6 @@ pub fn import_track(
         })
         .map_err(|e| e.to_string())?;
     Ok(ImportedTrack { id, title, duration_ms })
-}
-
-/// SwiftF0 모델 확보: 기존 resolve 경로 → 없으면 다운로드 매니저.
-fn ensure_swiftf0(app: &AppHandle, root: &StorageRoot) -> Result<PathBuf, String> {
-    if let Some(p) = crate::resolve_model_path(app) {
-        return Ok(p);
-    }
-    ensure_model(&root.models_dir(), &SWIFTF0, &mut |_, _| {}).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -273,9 +265,12 @@ fn run_separation_job(
     emit("save", 1.0, None);
 
     // 5) SwiftF0 추출 + 후처리 + 노트 (F0C1 재사용).
-    let swift_path = ensure_swiftf0(app, root)?;
-    let mut pitch_engine =
-        vocalboard_dsp::OrtEngine::from_file(&swift_path).map_err(|e| e.to_string())?;
+    // resolve 경로 우선, 없으면 임베드 모델(lib.rs::SWIFTF0_MODEL) 사용.
+    let mut pitch_engine = match crate::resolve_model_path(app) {
+        Some(p) => vocalboard_dsp::OrtEngine::from_file(&p),
+        None => vocalboard_dsp::OrtEngine::from_memory(crate::SWIFTF0_MODEL),
+    }
+    .map_err(|e| e.to_string())?;
     let stem16k = stem_to_16k(&stems.vocals.left, &stems.vocals.right, SEP_SR)
         .map_err(|e| e.to_string())?;
     let params = ExtractParams::default();

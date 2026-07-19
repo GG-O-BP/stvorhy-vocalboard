@@ -9,6 +9,8 @@
     "build": "vite build",
     "serve": "vite preview",
     "tauri": "tauri",
+    "android:dev": "tauri android dev --target aarch64",
+    "android:build": "tauri android build --target aarch64",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

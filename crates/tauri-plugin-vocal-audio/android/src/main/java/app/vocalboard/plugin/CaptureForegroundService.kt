@@ -19,27 +19,19 @@ class CaptureForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val channelId = "vocalboard-capture"
         val manager = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Vocalboard 캡처",
-                NotificationManager.IMPORTANCE_LOW,
-            )
-            channel.description = "피치 모니터링 진행 중"
-            manager.createNotificationChannel(channel)
-        }
-        val notification: Notification =
-            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Notification.Builder(this, channelId)
-            } else {
-                @Suppress("DEPRECATION")
-                Notification.Builder(this)
-            })
-                .setContentTitle("Vocalboard")
-                .setContentText("피치 모니터링 진행 중")
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setOngoing(true)
-                .build()
+        val channel = NotificationChannel(
+            channelId,
+            "Vocalboard 캡처",
+            NotificationManager.IMPORTANCE_LOW,
+        )
+        channel.description = "피치 모니터링 진행 중"
+        manager.createNotificationChannel(channel)
+        val notification: Notification = Notification.Builder(this, channelId)
+            .setContentTitle("Vocalboard")
+            .setContentText("피치 모니터링 진행 중")
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setOngoing(true)
+            .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(

@@ -2,3 +2,5 @@ node_modules
 dist
 /target
 /models
+# Claude Code 머신 로컬 설정 (+하네스가 쓰는 임시 파일)
+.claude/settings.local.json*
